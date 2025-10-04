@@ -1,37 +1,44 @@
 (function() {
-    console.log('Starting answer script...');
-    let questions = document.querySelectorAll('div, section, article');
+    console.log('Starting auto-answer...');
+    let questions = document.querySelectorAll('.question-text, .question, [class*="question"], h3');
+    if (!questions.length) {
+        alert('No questions found!');
+        return;
+    }
+    let apiUrl = 'https://api-inference.huggingface.co/models/gpt2';
     questions.forEach((q, i) => {
-        console.log('Checking Q' + i + ': ', q);
-        let opts = q.querySelectorAll('input[type="radio"]:not(:checked), [class*="option"] input, label input');
-        console.log('Found options: ', opts);
+        let opts = q.closest('div, section')?.querySelectorAll('input[type="radio"]:not(:checked), label input, [class*="option"] input');
         if (opts.length) {
-            let bestOpt = opts[0]; // Default to first
-            let bestScore = 0;
-            opts.forEach(opt => {
-                let text = (opt.nextSibling?.textContent || opt.value || opt.parentNode.textContent || '').toLowerCase();
-                console.log('Option text: ', text);
-                let score = 0;
-                if (text.length > 20) score += 10;
-                if (text.includes('correct') || text.includes('true') || text.includes('yes')) score += 50;
-                if (text.includes('false') || text.includes('no')) score -= 20;
-                if (score > bestScore) {
-                    bestScore = score;
-                    bestOpt = opt;
+            let questionText = q.textContent.trim();
+            let optionTexts = Array.from(opts).map(o => o.nextSibling?.textContent || o.value || o.parentNode.textContent).filter(t => t);
+            console.log(`Q${i}: ${questionText}\nOptions: ${optionTexts.join(', ')}`);
+            fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ inputs: `Question: ${questionText}\nOptions: ${optionTexts.join('\n')}\nBest answer (A, B, C, D or 1, 2, 3, 4):` })
+            }).then(r => r.json()).then(d => {
+                let answer = d[0].generated_text.trim().toUpperCase();
+                let index = answer.match(/[1-4]/) ? parseInt(answer) - 1 : answer.charCodeAt(0) - 65;
+                if (index >= 0 && index < opts.length) {
+                    opts[index].click();
+                    console.log(`Answered Q${i} with ${optionTexts[index]} (AI: ${answer})`);
+                    alert(`Answered Q${i}: ${optionTexts[index]}`);
+                } else {
+                    opts[0].click(); // Fallback
+                    console.log(`Fallback Q${i} with ${optionTexts[0]}`);
+                    alert(`Fallback Q${i}: ${optionTexts[0]}`);
                 }
-                console.log('Score for ', text, ': ', score);
+            }).catch(e => {
+                opts[0].click();
+                console.log(`API error Q${i}, fallback to ${optionTexts[0]}: ${e}`);
+                alert(`Error Q${i}, clicked ${optionTexts[0]}`);
             });
-            try {
-                bestOpt.click();
-                console.log('Clicked Q' + i + ': ' + (bestOpt.nextSibling?.textContent || bestOpt.value) + ' (Score: ' + bestScore + ')');
-                alert('Answered Q' + i + ': ' + (bestOpt.nextSibling?.textContent || bestOpt.value));
-            } catch (e) {
-                console.log('Click failed for Q' + i + ': ', e);
-                alert('Click failed for Q' + i);
-            }
-        } else {
-            console.log('No options for Q' + i);
+            time.sleep(1); // Rough delay
         }
     });
-    alert('Done attempting answers!');
+    setTimeout(() => {
+        document.querySelector('.next-button, button.next, [class*="next"]')?.click();
+        document.getElementById('submit-quiz')?.click();
+        alert('Done!');
+    }, 5000); // Wait 5s, then next/submit
 })();
